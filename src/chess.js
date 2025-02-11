@@ -2,12 +2,16 @@ class ChessGame {
   constructor() {
     this.canvas = document.getElementById("chessboard");
     this.ctx = this.canvas.getContext("2d");
+
+    // Calculate board size with padding for notation
+    const padding =
+      (Math.min(window.innerWidth - 40, window.innerHeight - 200) * 0.3) / 8; // 30% of square size
     this.boardSize = Math.min(window.innerWidth - 40, window.innerHeight - 200);
     this.squareSize = this.boardSize / 8;
 
-    // Set canvas size
-    this.canvas.width = this.boardSize;
-    this.canvas.height = this.boardSize;
+    // Set canvas size including padding
+    this.canvas.width = this.boardSize + padding * 2;
+    this.canvas.height = this.boardSize + padding * 2;
 
     // Initialize the board
     this.board = this.createInitialBoard();
@@ -243,30 +247,59 @@ class ChessGame {
       knightsDefendingEachOther: 0.3,
     };
 
-    // Draw the initial board
-    this.draw();
+    // Load piece images and initialize game after all images are loaded
+    this.loadPieces().then(() => {
+      // Draw the initial board
+      this.draw();
 
-    // Add game history tracking for learning
-    this.currentGameHistory = [];
+      // Add game history tracking for learning
+      this.currentGameHistory = [];
 
-    // Add temperature control
-    this.createTemperatureControl();
-    this.temperature = 0.8; // Default temperature
-
-    // Add AI mode control
-    this.createAIModeControl();
-    this.aiMode = "homegrown"; // Default to homegrown AI
-    this.stockfish = null; // Will be initialized if stockfish mode is selected
-
-    // Add game mode control
-    this.createGameModeControl();
-    this.gameMode = "humanVsAI"; // Default mode
+      // Initialize controls and their values
+      this.temperature = 0.8; // Default temperature
+      this.aiMode = "homegrown"; // Default to homegrown AI
+      this.stockfish = null; // Will be initialized if stockfish mode is selected
+      this.gameMode = "humanVsAI"; // Default mode
+      this.initializeControls(); // This will update the values from the HTML selects
+    });
 
     // Add draw detection properties
     this.movesSinceCaptureOrPawn = 0;
     this.positionHistory = new Map(); // For repetition detection
 
     this.isProcessingMove = false; // Add this flag
+  }
+
+  // Add this new method to handle image loading
+  async loadPieces() {
+    this.pieceImages = {};
+    const pieces = ["pawn", "rook", "knight", "bishop", "queen", "king"];
+    const colors = ["white", "black"];
+
+    const loadImage = (color, piece) => {
+      return new Promise((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = () =>
+          reject(new Error(`Failed to load ${color}-${piece}.png`));
+        img.src = `/pieces/${color}-${piece}.png`;
+        this.pieceImages[`${color}_${piece}`] = img;
+      });
+    };
+
+    const imagePromises = [];
+    pieces.forEach((piece) => {
+      colors.forEach((color) => {
+        imagePromises.push(loadImage(color, piece));
+      });
+    });
+
+    try {
+      await Promise.all(imagePromises);
+      console.log("All piece images loaded successfully");
+    } catch (error) {
+      console.error("Error loading piece images:", error);
+    }
   }
 
   createInitialBoard() {
@@ -300,230 +333,23 @@ class ChessGame {
   }
 
   drawPiece(type, color, x, y) {
-    const size = this.squareSize;
-    const center = size / 2;
-    this.ctx.fillStyle = color;
-    this.ctx.strokeStyle = color === "white" ? "black" : "white";
-    this.ctx.lineWidth = 2;
-
-    switch (type) {
-      case "pawn":
-        // Base
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.75);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.5,
-          y + size * 0.7,
-          x + size * 0.7,
-          y + size * 0.75
-        );
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.5);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.5);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Head
-        this.ctx.beginPath();
-        this.ctx.arc(
-          x + size * 0.5,
-          y + size * 0.35,
-          size * 0.15,
-          0,
-          Math.PI * 2
-        );
-        this.ctx.fill();
-        this.ctx.stroke();
-        break;
-
-      case "rook":
-        // Base
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.75);
-        this.ctx.lineTo(x + size * 0.7, y + size * 0.75);
-        this.ctx.lineTo(x + size * 0.65, y + size * 0.45);
-        this.ctx.lineTo(x + size * 0.35, y + size * 0.45);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Top
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.45);
-        this.ctx.lineTo(x + size * 0.3, y + size * 0.25);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.25);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.35);
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.35);
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.25);
-        this.ctx.lineTo(x + size * 0.7, y + size * 0.25);
-        this.ctx.lineTo(x + size * 0.7, y + size * 0.45);
-        this.ctx.fill();
-        this.ctx.stroke();
-        break;
-
-      case "knight":
-        // Base
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.75);
-        this.ctx.lineTo(x + size * 0.7, y + size * 0.75);
-        this.ctx.lineTo(x + size * 0.65, y + size * 0.6);
-        this.ctx.lineTo(x + size * 0.35, y + size * 0.6);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Head
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.35, y + size * 0.6);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.3);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.45,
-          y + size * 0.25,
-          x + size * 0.5,
-          y + size * 0.25
-        );
-        this.ctx.quadraticCurveTo(
-          x + size * 0.6,
-          y + size * 0.3,
-          x + size * 0.65,
-          y + size * 0.35
-        );
-        this.ctx.quadraticCurveTo(
-          x + size * 0.7,
-          y + size * 0.4,
-          x + size * 0.65,
-          y + size * 0.6
-        );
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Ear
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.4, y + size * 0.3);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.35,
-          y + size * 0.2,
-          x + size * 0.45,
-          y + size * 0.25
-        );
-        this.ctx.fill();
-        this.ctx.stroke();
-        break;
-
-      case "bishop":
-        // Base
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.75);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.5,
-          y + size * 0.7,
-          x + size * 0.7,
-          y + size * 0.75
-        );
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.5);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.5);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Head
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.4, y + size * 0.5);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.5,
-          y + size * 0.45,
-          x + size * 0.5,
-          y + size * 0.25
-        );
-        this.ctx.quadraticCurveTo(
-          x + size * 0.5,
-          y + size * 0.45,
-          x + size * 0.6,
-          y + size * 0.5
-        );
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Slash
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.4, y + size * 0.35);
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.35);
-        this.ctx.stroke();
-        break;
-
-      case "queen":
-        // Base
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.75);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.5,
-          y + size * 0.7,
-          x + size * 0.7,
-          y + size * 0.75
-        );
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.5);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.5);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Crown
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.5);
-        this.ctx.lineTo(x + size * 0.3, y + size * 0.3);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.5,
-          y + size * 0.2,
-          x + size * 0.7,
-          y + size * 0.3
-        );
-        this.ctx.lineTo(x + size * 0.7, y + size * 0.5);
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Points
-        for (let i = 0; i < 3; i++) {
-          this.ctx.beginPath();
-          this.ctx.arc(
-            x + size * (0.35 + i * 0.15),
-            y + size * 0.25,
-            size * 0.05,
-            0,
-            Math.PI * 2
-          );
-          this.ctx.fill();
-          this.ctx.stroke();
-        }
-        break;
-
-      case "king":
-        // Base
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.3, y + size * 0.75);
-        this.ctx.quadraticCurveTo(
-          x + size * 0.5,
-          y + size * 0.7,
-          x + size * 0.7,
-          y + size * 0.75
-        );
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.5);
-        this.ctx.lineTo(x + size * 0.4, y + size * 0.5);
-        this.ctx.closePath();
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Crown
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.35, y + size * 0.5);
-        this.ctx.lineTo(x + size * 0.35, y + size * 0.3);
-        this.ctx.lineTo(x + size * 0.65, y + size * 0.3);
-        this.ctx.lineTo(x + size * 0.65, y + size * 0.5);
-        this.ctx.fill();
-        this.ctx.stroke();
-        // Cross
-        this.ctx.beginPath();
-        this.ctx.moveTo(x + size * 0.5, y + size * 0.15);
-        this.ctx.lineTo(x + size * 0.5, y + size * 0.35);
-        this.ctx.moveTo(x + size * 0.4, y + size * 0.25);
-        this.ctx.lineTo(x + size * 0.6, y + size * 0.25);
-        this.ctx.stroke();
-        break;
+    const img = this.pieceImages[`${color}_${type}`];
+    if (img && img.complete) {
+      this.ctx.drawImage(img, x, y, this.squareSize, this.squareSize);
+    } else {
+      console.warn(`Image not loaded for ${color} ${type}`);
     }
   }
 
   draw() {
-    // Draw board
+    // Clear the canvas
+    this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+    // Add padding for notation
+    const padding = this.squareSize * 0.3; // 30% of square size for notation
+    this.ctx.translate(padding, padding);
+
+    // Draw board squares
     for (let row = 0; row < 8; row++) {
       for (let col = 0; col < 8; col++) {
         const isLight = (row + col) % 2 === 0;
@@ -548,6 +374,44 @@ class ChessGame {
       }
     }
 
+    // Draw notation
+    this.ctx.fillStyle = "#000000";
+    this.ctx.font = `${padding * 0.7}px Arial`;
+    this.ctx.textAlign = "center";
+    this.ctx.textBaseline = "middle";
+
+    // Draw file notation (a-h)
+    for (let col = 0; col < 8; col++) {
+      // Bottom notation
+      this.ctx.fillText(
+        String.fromCharCode(97 + col), // 'a' starts at 97 in ASCII
+        col * this.squareSize + this.squareSize / 2,
+        8 * this.squareSize + padding * 0.5
+      );
+      // Top notation
+      this.ctx.fillText(
+        String.fromCharCode(97 + col),
+        col * this.squareSize + this.squareSize / 2,
+        -padding * 0.5
+      );
+    }
+
+    // Draw rank notation (1-8)
+    for (let row = 0; row < 8; row++) {
+      // Left notation
+      this.ctx.fillText(
+        8 - row,
+        -padding * 0.5,
+        row * this.squareSize + this.squareSize / 2
+      );
+      // Right notation
+      this.ctx.fillText(
+        8 - row,
+        8 * this.squareSize + padding * 0.5,
+        row * this.squareSize + this.squareSize / 2
+      );
+    }
+
     // Highlight selected piece if any
     if (this.selectedPiece) {
       const { row, col } = this.selectedPiece;
@@ -560,6 +424,9 @@ class ChessGame {
         this.squareSize
       );
     }
+
+    // Reset transform
+    this.ctx.setTransform(1, 0, 0, 1, 0, 0);
   }
 
   handleClick(event) {
@@ -574,8 +441,12 @@ class ChessGame {
       return;
 
     const rect = this.canvas.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const padding = this.squareSize * 0.3; // Same padding as in draw method
+    const x = event.clientX - rect.left - padding;
+    const y = event.clientY - rect.top - padding;
+
+    // Ignore clicks outside the actual board area
+    if (x < 0 || x >= this.boardSize || y < 0 || y >= this.boardSize) return;
 
     const col = Math.floor(x / this.squareSize);
     const row = Math.floor(y / this.squareSize);
@@ -1310,32 +1181,37 @@ class ChessGame {
   }
 
   showPromotionDialog(row, col) {
-    const promotionDiv = document.createElement("div");
-    promotionDiv.className = "promotion-dialog";
-    promotionDiv.style.position = "absolute";
+    const promotionDiv = document.querySelector(".promotion-dialog");
+    if (!promotionDiv) return;
 
-    // Position the dialog near the promotion square
+    // Show the dialog
+    promotionDiv.classList.remove("hidden");
+
+    // Position the dialog next to the promotion square
     const rect = this.canvas.getBoundingClientRect();
-    promotionDiv.style.left = `${rect.left + col * this.squareSize}px`;
-    promotionDiv.style.top = `${rect.top + row * this.squareSize}px`;
+    const padding = this.squareSize * 0.3; // Same padding as board
+    const squareX = rect.left + padding + col * this.squareSize;
+    const squareY = rect.top + padding + row * this.squareSize;
 
-    const pieces = ["queen", "rook", "bishop", "knight"];
-    pieces.forEach((piece) => {
-      const button = document.createElement("button");
-      button.textContent = piece.charAt(0).toUpperCase();
-      button.onclick = () => this.promotePawn(piece);
-      promotionDiv.appendChild(button);
-    });
+    // Position dialog to the right of the square if possible, otherwise to the left
+    const spaceToRight = window.innerWidth - (squareX + this.squareSize);
+    const dialogWidth = 120; // Approximate width of dialog
 
-    document.body.appendChild(promotionDiv);
+    if (spaceToRight >= dialogWidth) {
+      promotionDiv.style.left = `${squareX + this.squareSize}px`;
+    } else {
+      promotionDiv.style.left = `${squareX - dialogWidth}px`;
+    }
+
+    promotionDiv.style.top = `${squareY}px`;
   }
 
   promotePawn(pieceType) {
     if (!this.pendingPromotion) return;
 
-    // Remove promotion dialog
+    // Hide promotion dialog
     const dialog = document.querySelector(".promotion-dialog");
-    if (dialog) dialog.remove();
+    if (dialog) dialog.classList.add("hidden");
 
     // Promote the pawn
     const { row, col, color } = this.pendingPromotion;
@@ -1348,6 +1224,13 @@ class ChessGame {
     this.currentPlayer = this.currentPlayer === "white" ? "black" : "white";
     this.updateStatus();
     this.draw();
+
+    // Add this section to trigger AI move if needed
+    if (!this.isGameOver && 
+        ((this.gameMode === "AIvsAI") || 
+         (this.gameMode === "humanVsAI" && this.currentPlayer === this.aiColor))) {
+      setTimeout(() => this.makeAIMove(), 250);
+    }
   }
 
   // Add these new methods for AI
@@ -2844,77 +2727,19 @@ class ChessGame {
     return { row: rank, col: file };
   }
 
-  createTemperatureControl() {
-    // Create container div
-    const controlDiv = document.createElement("div");
-    controlDiv.style.marginTop = "10px";
-    controlDiv.style.marginBottom = "10px";
-
-    // Create label
-    const label = document.createElement("label");
-    label.textContent = "AI Randomness: ";
-    label.htmlFor = "temperatureSelect";
-
-    // Create select element
-    const select = document.createElement("select");
-    select.id = "temperatureSelect";
-
-    // Add options
-    const options = [
-      { value: 0.1, text: "Very Conservative" },
-      { value: 0.5, text: "Conservative" },
-      { value: 0.8, text: "Balanced" },
-      { value: 1.0, text: "Creative" },
-      { value: 1.5, text: "Very Creative" },
-    ];
-
-    options.forEach((option) => {
-      const optElement = document.createElement("option");
-      optElement.value = option.value;
-      optElement.textContent = option.text;
-      if (option.value === 0.8) optElement.selected = true;
-      select.appendChild(optElement);
-    });
-
-    // Add event listener
-    select.addEventListener("change", (e) => {
+  initializeControls() {
+    // Temperature control
+    const temperatureSelect = document.getElementById("temperatureSelect");
+    temperatureSelect.addEventListener("change", (e) => {
       this.temperature = parseFloat(e.target.value);
       console.log(`Temperature set to: ${this.temperature}`);
     });
+    // Set initial temperature value
+    this.temperature = parseFloat(temperatureSelect.value);
 
-    // Append elements
-    controlDiv.appendChild(label);
-    controlDiv.appendChild(select);
-
-    // Add to page
-    this.canvas.parentNode.insertBefore(controlDiv, this.canvas);
-  }
-
-  createAIModeControl() {
-    const controlDiv = document.createElement("div");
-    controlDiv.style.marginTop = "10px";
-    controlDiv.style.marginBottom = "10px";
-
-    const label = document.createElement("label");
-    label.textContent = "AI Engine: ";
-    label.htmlFor = "aiModeSelect";
-
-    const select = document.createElement("select");
-    select.id = "aiModeSelect";
-
-    const options = [
-      { value: "homegrown", text: "Homegrown AI" },
-      { value: "stockfish", text: "Stockfish Engine" },
-    ];
-
-    options.forEach((option) => {
-      const optElement = document.createElement("option");
-      optElement.value = option.value;
-      optElement.textContent = option.text;
-      select.appendChild(optElement);
-    });
-
-    select.addEventListener("change", async (e) => {
+    // AI Mode control
+    const aiModeSelect = document.getElementById("aiModeSelect");
+    aiModeSelect.addEventListener("change", async (e) => {
       this.aiMode = e.target.value;
       if (this.aiMode === "stockfish" && !this.stockfish) {
         try {
@@ -2939,7 +2764,7 @@ class ChessGame {
         } catch (error) {
           console.error("Failed to load Stockfish:", error);
           this.aiMode = "homegrown";
-          select.value = "homegrown";
+          aiModeSelect.value = "homegrown";
           alert(
             "Failed to load Stockfish engine. Falling back to homegrown AI."
           );
@@ -2947,10 +2772,18 @@ class ChessGame {
       }
       console.log(`AI mode set to: ${this.aiMode}`);
     });
+    // Set initial AI mode
+    this.aiMode = aiModeSelect.value;
 
-    controlDiv.appendChild(label);
-    controlDiv.appendChild(select);
-    this.canvas.parentNode.insertBefore(controlDiv, this.canvas);
+    // Game Mode control
+    const gameModeSelect = document.getElementById("gameModeSelect");
+    gameModeSelect.addEventListener("change", async (e) => {
+      this.gameMode = e.target.value;
+      this.resetGame();
+      console.log(`Game mode set to: ${this.gameMode}`);
+    });
+    // Set initial game mode
+    this.gameMode = gameModeSelect.value;
   }
 
   makeStockfishMove(move) {
@@ -3022,45 +2855,9 @@ class ChessGame {
       this.isProcessingMove = false;
     }
   }
-
-  createGameModeControl() {
-    const controlDiv = document.createElement("div");
-    controlDiv.style.marginTop = "10px";
-    controlDiv.style.marginBottom = "10px";
-
-    const label = document.createElement("label");
-    label.textContent = "Game Mode: ";
-    label.htmlFor = "gameModeSelect";
-
-    const select = document.createElement("select");
-    select.id = "gameModeSelect";
-
-    const options = [
-      { value: "humanVsAI", text: "Human vs AI" },
-      { value: "AIvsAI", text: "AI vs AI" },
-      { value: "humanVsHuman", text: "Human vs Human" },
-    ];
-
-    options.forEach((option) => {
-      const optElement = document.createElement("option");
-      optElement.value = option.value;
-      optElement.textContent = option.text;
-      select.appendChild(optElement);
-    });
-
-    select.addEventListener("change", async (e) => {
-      this.gameMode = e.target.value;
-      this.resetGame();
-      console.log(`Game mode set to: ${this.gameMode}`);
-    });
-
-    controlDiv.appendChild(label);
-    controlDiv.appendChild(select);
-    this.canvas.parentNode.insertBefore(controlDiv, this.canvas);
-  }
 }
 
 // Start the game when the page loads
 window.addEventListener("load", () => {
-  new ChessGame();
+  window.chessGame = new ChessGame();
 });
